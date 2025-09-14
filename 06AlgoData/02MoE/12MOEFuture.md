@@ -1,8 +1,8 @@
-# 单机多卡 MoE
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-解读 by: [XXXX]
+# 12.单机多卡 MoE
 
-XXXX
+Author by:  XXXX
 
 ## 本节视频
 

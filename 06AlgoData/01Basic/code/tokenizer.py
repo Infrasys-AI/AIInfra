@@ -33,7 +33,7 @@ print(input_ids)
 decoded_text = tokenizer.decode(input_ids[0], skip_special_tokens=True)
 print(decoded_text)
 
-# 测试vocab-token数量占比
+# 测试 vocab-token 数量占比
 vocab = tokenizer.get_vocab()
 
 total_tokens = len(vocab)

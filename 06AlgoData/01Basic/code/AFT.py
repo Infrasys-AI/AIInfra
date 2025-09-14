@@ -5,7 +5,7 @@ class AFTFull(nn.Module):
     def __init__(self, max_len, dim, hid_dim=32):
         super().__init__()
         self.max_len = max_len
-        self.dim = dim          # token的节点数
+        self.dim = dim          # token 的节点数
         self.hid_dim = hid_dim  # 隐层节点数
         self.wq = nn.Linear(self.dim, self.hid_dim)
         self.wk = nn.Linear(self.dim, self.hid_dim)

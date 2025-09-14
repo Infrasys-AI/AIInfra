@@ -1,9 +1,8 @@
-<!--Copyright © ZOMI 适用于[License](https://github.com/chenzomi12/AIInfra)版权许可-->
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# DeepSeek MOE 解读
+# 08.DeepSeek MOE 解读
 
-解读 by: [XXXX]
-
+Author by:  XXXX
 XXX
 
 ## 本节视频

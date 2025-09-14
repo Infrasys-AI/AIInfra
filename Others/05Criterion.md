@@ -1,4 +1,4 @@
-<!--Copyright © ZOMI 适用于[License](https://github.com/chenzomi12/AIInfra)版权许可-->
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # 书写规范
 
@@ -34,7 +34,7 @@
 
 2. 添加各个章节和小节序号。
 
-### 小结语思考
+### 总结与思考语思考
 
 - 节内容回顾了 AI 框架在时间维度和技术维度的发展趋势
 
@@ -65,7 +65,7 @@
 
 ### 链接
 
-Http 链接不直接暴露。放于语法[文字](https://github.com/chenzomi12/AIInfra)。
+Http 链接不直接暴露。放于语法[文字](https://github.com/Infrasys-AI/AIInfra)。
 
 ### 图片
 

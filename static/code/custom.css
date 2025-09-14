@@ -1,0 +1,13 @@
+/* 显示正文中的标题序号 */
+.section > h1 .section-number,
+.section > h2 .section-number,
+.section > h3 .section-number {
+    display: inline !important; /* 确保不被隐藏 */
+    margin-right: 0.5em; /* 序号与标题文本间距 */
+}
+
+/* 显示侧边栏目录（TOC）中的序号 */
+.bd-sidebar-secondary .toc-item .section-number {
+    display: inline-block !important;
+    margin-right: 0.3em;
+}

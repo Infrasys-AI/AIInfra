@@ -1,4 +1,4 @@
-<!--Copyright © ZOMI 适用于[License](https://github.com/chenzomi12/AIInfra)版权许可-->
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # 编辑和作者
 
@@ -10,6 +10,6 @@
 
 ## 加入我们
 
-我们创建了 AIInfra 社区来讨论人工智能系统课程的参与方式。
+我们创建了 AI Infra 社区来讨论人工智能系统课程的参与方式。
 
-如果希望加入我们，可以 B 站或者 Youtube 私信 ZOMI（加的时候请介绍自己，并说明希望参与 AIInfra 哪方面工作）。
+如果希望加入我们，可以 B 站或者 Youtube 私信 ZOMI（加的时候请介绍自己，并说明希望参与 AI Infra 哪方面工作）。

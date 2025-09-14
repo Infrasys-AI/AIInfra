@@ -1,12 +1,18 @@
-<!--Copyright © ZOMI 适用于[License](https://github.com/chenzomi12/AIInfra)版权许可-->
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # 集群容器与云原生概述
 
-本次大纲内容主要围绕......
+Author by: 张柯帆
+
+云计算是一种将**计算、存储、网络等 IT 资源市场化**的一种商业模式，它旨在克服物理基础设置固有的弹性不足和高门槛的问题。在数字化浪潮下，IT 资源被视为如同电力、水力一样的社会基础设施。
+
+云计算的一个重要领域就是容器化与云原生技术，其具有**核心支柱和效率革命**两大作用，也催生了一个规模庞大的开源社群 CNCF（云原生计算基金会）。云原生的本质是将过去以物理机（也包括虚拟机）为核心的模式转变为以容器为核心。这个过程中不仅涉及 CPU/内存、网络、存储、分布式系统的容器化改造，也促成了技术迭代模式的升级，从过去开发、运维各司其职的模式向 DevOps 转变。这极大地释放了生产力：开发桎梏消减、迭代周期缩短、技术门槛下沉。最终，更广泛的参与者、更快的创新涌现，共同重塑了互联网如今的竞争格局。
+
+本章将从容器技术入手，从 Docker（容器）到 Kubernetes（编排），逐步展开云原生如何将物理资源转变成更方便使用的"虚拟"资源。
 
 ## 课程位置
 
-![AIInfra](./images/arch01.png)
+![AI Infra](./images/arch01.png)
 
 ## 课程简介
 
@@ -14,14 +20,12 @@ xxx
 
 ## 课程知识
 
-xxx
+![AI Infra](./images/arch02.png)
 
 ## 备注
 
-系列视频托管[B 站](https://space.bilibili.com/517221395)和[油管](https://www.youtube.com/@ZOMI666/playlists)，PPT 开源在[github](https://github.com/chenzomi12/AIInfra)，欢迎取用！！！
+系列视频托管[B 站](https://space.bilibili.com/517221395)和[油管](https://www.youtube.com/@ZOMI666/playlists)，PPT 开源在[github](https://github.com/Infrasys-AI/AIInfra)，欢迎引用！
 
-> 非常希望您也参与到这个开源课程中，先给 github 点赞，然后 B 站给 ZOMI 留言哦！
+> 非常希望您参与到这个开源课程中，B 站给 ZOMI 留言哦！
 >
-> 欢迎大家使用的过程中发现 bug 或者勘误直接提交代码 PR 到开源社区哦！
->
-> 希望这个系列能够给大家、朋友们带来一些些帮助，也希望自己能够继续坚持完成所有内容哈！
+> 欢迎发现 bug 或者勘误直接提交代码 PR 到社区哦！
