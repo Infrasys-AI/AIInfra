@@ -1,6 +1,6 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 02: Megatron 张量并行复现
+# CODE02: Megatron TP复现(DONE)
 
 > Author by: 许灿岷
 
@@ -944,7 +944,7 @@ if __name__ == "__main__":
 ```
 
     Writing Code02Megatron.py
-    
+
 
 ## 8. 在 Jupyter 中执行分布式训练
 
@@ -1007,13 +1007,13 @@ if os.path.exists('Code02Megatron.py'):
     GPU 数量: 4
     主机名: autodl-container-352c469ce5-0262aef0
     NCCL version 2.21.5+cuda12.4
-    
+
 
     [rank0]:[W1107 23:05:28.294109999 ProcessGroupNCCL.cpp:4115] [PG ID 0 PG GUID 0 Rank 0]  using GPU 0 to perform barrier as devices used by this process are currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect.Specify device_ids in barrier() to force use of a particular device,or call init_process_group() with a device_id.
     [rank3]:[W1107 23:05:29.461084968 ProcessGroupNCCL.cpp:4115] [PG ID 0 PG GUID 0 Rank 3]  using GPU 3 to perform barrier as devices used by this process are currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect.Specify device_ids in barrier() to force use of a particular device,or call init_process_group() with a device_id.
     [rank1]:[W1107 23:05:29.475599499 ProcessGroupNCCL.cpp:4115] [PG ID 0 PG GUID 0 Rank 1]  using GPU 1 to perform barrier as devices used by this process are currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect.Specify device_ids in barrier() to force use of a particular device,or call init_process_group() with a device_id.
     [rank2]:[W1107 23:05:29.487187507 ProcessGroupNCCL.cpp:4115] [PG ID 0 PG GUID 0 Rank 2]  using GPU 2 to perform barrier as devices used by this process are currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect.Specify device_ids in barrier() to force use of a particular device,or call init_process_group() with a device_id.
-    
+
 
     
     模型配置:
@@ -1080,7 +1080,7 @@ if os.path.exists('Code02Megatron.py'):
        最终 Loss: 0.0012
        峰值显存: 180.30 MB (0.18 GB)
     ============================================================
-    
+
 
 另外，单 GPU 情况下的训练输出为：
 

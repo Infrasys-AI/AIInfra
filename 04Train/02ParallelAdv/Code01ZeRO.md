@@ -1,6 +1,6 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 01: ZeRO 显存优化实践
+# CODE01: ZeRO显存优化(DONE)
 
 > Author by: 许灿岷
 
@@ -63,7 +63,7 @@ print(f"  - PyTorch 版本: {torch.__version__}")
       - GPU 数量: 4
       - CUDA 可用: True
       - PyTorch 版本: 2.5.1+cu124
-    
+
 
 ## 1. 模型显存占用分析
 
@@ -245,7 +245,7 @@ memory_stats = analyze_memory_with_theory()
       差异:          激活值 + 其他开销
     ============================================================
     
-    
+
 
 ## 2. 传统数据并行（DDP）基准测试
 
@@ -353,7 +353,7 @@ if __name__ == "__main__":
 ```
 
     Writing temp_ddp_baseline.py
-    
+
 
 
 ```python
@@ -391,7 +391,7 @@ if os.path.exists(script_name):
     
     
     ✅ 已清理临时文件: temp_ddp_baseline.py
-    
+
 
 ## 3. ZeRO-1: 优化器状态分片
 ![](./images/Code01ZeRO01.png)
@@ -575,7 +575,7 @@ if __name__ == "__main__":
 ```
 
     Writing temp_zero1.py
-    
+
 
 
 ```python
@@ -613,7 +613,7 @@ if os.path.exists(script_name):
     
     
     ✅ 已清理临时文件: temp_zero1.py
-    
+
 
 ## 4. ZeRO-2: 优化器状态 + 梯度分片
 ![](./images/Code01ZeRO02.png)
@@ -866,7 +866,7 @@ if __name__ == "__main__":
 ```
 
     Writing temp_zero2.py
-    
+
 
 
 ```python
@@ -912,7 +912,7 @@ if os.path.exists(script_name):
     
     
     ✅ 已清理临时文件: temp_zero2.py
-    
+
 
 ## 5. ZeRO-3: 优化器状态 + 梯度 + 参数分片
 ![](./images/Code01ZeRO03.png)
@@ -1161,7 +1161,7 @@ if __name__ == "__main__":
 ```
 
     Writing temp_zero3.py
-    
+
 
 
 ```python
@@ -1199,7 +1199,7 @@ if os.path.exists(script_name):
     
     
     ✅ 已清理临时文件: temp_zero3.py
-    
+
 
 ## 6. 综合对比实验
 
@@ -1525,7 +1525,7 @@ if __name__ == "__main__":
 ```
 
     Writing temp_all_experiments.py
-    
+
 
 
 ```python
@@ -1579,48 +1579,17 @@ if os.path.exists(script_name):
     
     
     ✅ 已清理临时文件: temp_all_experiments.py
-    
+
 
 ## 总结与思考
 
-本实验通过真实多 GPU 环境的代码实现，深入探讨了 ZeRO 的各级优化技术：
-
-### 主要成果
-
-1. **理论验证**：实验结果与论文理论值高度吻合
-2. **显存节省**：
-   - ZeRO-1: 节省约 56% (优化器状态分片)
-   - ZeRO-2: 节省约 66% (+ 梯度分片)
-   - ZeRO-3: 节省约 75% (+ 参数分片)
-
-3. **权衡分析**：
-   - 显存 vs 通信：ZeRO 级别越高，显存节省越多，但通信开销也增加
-   - 建议根据网络带宽和模型大小选择合适级别
-
-### 实践建议
-
-- **小模型（<1B）**: DDP 或 ZeRO-1
-- **中等模型（1B-10B）**: ZeRO-2
-- **大模型（>10B）**: ZeRO-3 + CPU Offload
-
-### 后续学习
-
-1. **ZeRO-Offload**: 将优化器状态卸载到 CPU
-2. **ZeRO-Infinity**: 利用 NVMe 扩展显存
-3. **3D 并行**: ZeRO + 张量并行 + 流水线并行
-
----
-
-**参考与引用**:
-
-[ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054)
-
-[DeepSpeed ZeRO 通信量分析](https://blog.csdn.net/weixin_43336281/article/details/139483368)
-
-[ZeRO 数据传输量分析](https://zhuanlan.zhihu.com/p/653456176)
-
-[DeepSpeed 之 ZeRO 系列：将显存优化进行到底](https://zhuanlan.zhihu.com/p/513571706)
-
-[ZeRO：一种去除冗余的数据并行方案](https://www.cnblogs.com/whiteBear/p/18341975)
+本实验通过真实多 GPU 环境的代码实现，深入探讨了 ZeRO 的各级优化技术，实验结果与论文理论值高度吻合，ZeRO-1: 节省约 56% (优化器状态分片)，ZeRO-2: 节省约 66% (+ 梯度分片)，ZeRO-3: 节省约 75% (+ 参数分片)。ZeRO 级别越高，显存节省越多，但通信开销也增加，建议根据网络带宽和模型大小选择合适级别。
 
 
+## 参考与引用
+
+1. [ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054)
+2. [DeepSpeed ZeRO 通信量分析](https://blog.csdn.net/weixin_43336281/article/details/139483368)
+3. [ZeRO 数据传输量分析](https://zhuanlan.zhihu.com/p/653456176)
+4. [DeepSpeed 之 ZeRO 系列：将显存优化进行到底](https://zhuanlan.zhihu.com/p/513571706)
+5. [ZeRO：一种去除冗余的数据并行方案](https://www.cnblogs.com/whiteBear/p/18341975)

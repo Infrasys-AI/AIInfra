@@ -1,6 +1,6 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 01: 经典 InstructGPT 复现
+# CODE01: 经典InstructGPT复现(DONE)
 
 > Author by: 张玉霖
 
@@ -1658,7 +1658,7 @@ plt.show()
 
 
     
-![png](./images/output_28_0.png)
+![png](output_28_0.png)
     
 
 
@@ -1733,8 +1733,6 @@ for p in test_prompts:
     A: 
     
 
-
-经过 PPO 优化的模型生成的回答应该比仅经过 SFT 的模型更符合人类偏好。
 
 ## 6. 总结与思考
 

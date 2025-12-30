@@ -1,16 +1,91 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 02: LoRA 微调 SD
+# CODE02: LoRA 微调 SD(DONE)
 
-本文将从原理到代码，一步步带你实现使用 LoRA 技术微调 Stable Diffusion 模型，使其能够生成高质量的二次元风格图像。
+> Author by: 康煜
 
-## 1. 准备工作与环境配置
+本文将从原理到代码，一步步带你实现使用 LoRA 技术微调 Stable Diffusion 模型，使其能够生成二次元风格图像。
 
-首先，我们需要配置实验环境。确保你已经安装了必要的依赖库：
+## 1. Stable Diffusion 原理
+
+Stable Diffusion 发布于 2022 年，是一个由文本生成图像（text-to-image）或者（image-to-image）的生成式 AI 模型（Generative Model）。作为一种扩散模型，Stable Diffusion 在图像生成上的方法与许多其他的生成模型不同，它的原理是：将图像压缩到一个低维的“潜在空间”（latent space）之后，再进行处理。以 text-to-image 为例，训练过程中，我们先对输入的图像不断添加高斯噪声，如下图 1 所示。如果能把这个过程反过来（反向扩散），由一张完全是噪声的图像，一点点去除噪声后，重建出原始的图像（在模型以及 prompt 的引导之下），也就完成了 text-to-image 的任务。
+
+
+<div align="center">
+    <img src="./images/Code02SDLoRA01.png" >
+    <br>
+    <em> 图 1：Forward Diffusion —— 该过程是在每一步中依次添加噪声。噪声预测器会估计到每一步为止所添加的总噪声。</em>
+</div>
+
+</br>
+
+
+<div align="center">
+    <img src="./images/Code02SDLoRA02.png" >
+    <br>
+    <em> 图 2：Reverse Diffusion —— 我们首先生成一个完全随机的图像，并要求噪声预测器告诉我们噪声。然后，我们从原始图像中减去这个估计的噪声。重复这个过程几次。就会得到最终会需要的图像（猫猫）。</em>
+</div>
+
+</br>
+
+<div align="center">
+    <img src="./images/Code02SDLoRA03.png" >
+    <br>
+    <em> 图 3：Latent Diffusion Model: </em>
+</div>
+
+Stable Diffusion 的工作原理类似于一个有损压缩算法，既能够压缩也能解压缩，虽然不保证解压结果和压缩前完全一致，但是效果差距不会特别远。这个 encode/decode 的过程也是由一个深度学习模型完成，该模型称为 VAE (Variational Autoencoder)。其中 VAE 的 encoder 将图像压缩到潜在空间中的低维表示， decoder 从 latent space 中逐步重建图像。
+
+有关于 Stable Diffusion 为什么要采用这样的方式，我们可以做一个简单的对比：一张普通的彩色图片，如果分辨率是 512×512，其像素数量高达 78 万以上，直接处理对计算资源的要求非常高。而 Stable Diffusion 使用的压缩图像，数据量只有原来的约 1/48。大大减轻了计算负担。正因如此，如今我们甚至可以在配备 8GB 显存的普通台式机显卡上运行 Stable Diffusion 模型。
+
+
+<a name="table1"></a>
+<div align="center">
+
+**表 1：Stable Diffusion 各组件模型参数统计**
+
+| 组件   | 参数个数        | 文件大小   | 占比   |
+| ------ | ------------- | -------- | ----- |
+| CLIP   | 123,060,480   | 492 MB   | 12%   |
+| VAE    | 83,653,863    | 335 MB   | 8%    |
+| UNet   | 859,520,964   | 3.44 GB  | 80%   |
+| Total  | 1,066,235,307 | 4.27 GB  | 100%  |
+
+</div>
+
+
+此外，**噪音预测器（noise predictor）** 也是 Stable Diffusion 非常重要的一个组成部分，这个组件是一个[U-Net 模型](https://zhouyifan.net/2024/01/23/20230713-SD3/)，也是整个 SD 最关键的模型， 包括了一系列 ResNet 的卷积矩阵和 Cross-Attention 的矩阵，整个 SD 包含大约 860 M 的 参数，精度编码是 float32，总体需要 3.4G 的存储空间（其他见[各组件模型参数统计表](#table1)）。
+
+<div align="center">
+    <img src="./images/Code02SDLoRA04.png" >
+    <br>
+    <em> 图 4：Stable Diffusion 中的 Unet 模型架构 </em>
+</div>
+
+还有一个对输入进行 embedding 的模型 CLIP，Stable Diffusion 1.x 用的是 OpenAI 开源的 [ViT-L/14](https://github.com/CompVis/stable-diffusion) CLIP 模型，2.x 用的是 [OpenClip](https://stability.ai/blog/stable-diffusion-v2-release) 模型。
+
+
+
+
+
+综上，Stable Diffusion 中一共有三个模型
+
+- CLIP：用于对 prompt text 进行 embedding 然后输入给 U-Net
+- VAE: 将图像从像素空间编码到 latent space 以及最后 decode 回来
+- U-Net：迭代 denoise 所用的模型 LoRA 微调我们主要微调这个模型
+
+
+
+**其他**： 在原始的 Stable Diffusion v1 版本中，使用的数据集包括 LAION-Aesthetics v2.6，该数据集筛选了 Common Crawl 中美学评分达到 6 分及以上的图像，确保了训练素材的质量。到目前为止，Stable Diffusion 已经更新到了 [v3.5 版本](https://huggingface.co/spaces/stabilityai/stable-diffusion-3.5-medium)
+
+## 2. 准备工作与环境配置
+
+接下来我们需要配置实验环境，相关需要的库如下：
+
 
 ```python
 # 安装必要的库（如果尚未安装）
-!pip install torch torchvision diffusers transformers datasets pillow
+# !pip install torch torchvision diffusers transformers datasets pillow accelerate
 
 # 导入所需库
 import torch
@@ -30,7 +105,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"使用设备: {device}")
 
 # 设置随机种子，确保结果可重现
-torch.manual_seed(42)
+torch.manual_seed(202509)
+```
+
+    使用设备: cuda
+
+
+
+
+
+    <torch._C.Generator at 0x7f40941723d0>
+
+
+
+
+```python
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 ```
 
 ## 2. LoRA 原理详解
@@ -69,6 +160,7 @@ $$h = W_0 x + \frac{\alpha}{r} BA x$$
 
 让我们根据上述原理，手动实现一个 LoRA 层：
 
+
 ```python
 class LoRALayer(nn.Module):
     def __init__(self, in_features, out_features, rank=16, alpha=32):
@@ -100,68 +192,88 @@ class LoRALayer(nn.Module):
 
 接下来，我们需要将实现的 LoRA 层注入到 Stable Diffusion 的 UNet 模型中，特别是注意力层的 Q、K、V 投影矩阵：
 
+
 ```python
-def inject_lora_into_unet(unet, rank=16, alpha=32):
-    # 遍历 UNet 的所有模块
-    for name, module in unet.named_modules():
-        # 找到注意力层的 Q、K、V 投影矩阵
-        if "attn" in name and "to_q" in name:
-            # 获取原始的线性层
-            original_module = getattr(module, "to_q")
-            
-            # 创建对应的 LoRA 层
-            lora_layer = LoRALayer(
-                in_features=original_module.in_features,
-                out_features=original_module.out_features,
-                rank=rank,
-                alpha=alpha
-            ).to(original_module.weight.device)
-            
-            # 保存原始层并替换为新的前向传播函数
-            setattr(module, "original_to_q", original_module)
-            setattr(module, "lora_to_q", lora_layer)
-            
-            # 定义新的前向传播：原始输出 + LoRA 输出
-            def forward_q(self, x):
-                return self.original_to_q(x) + self.lora_to_q(x)
-            
-            # 绑定新的前向传播方法到模块
-            module.to_q = forward_q.__get__(module)
-            
-        # 对 K 投影矩阵执行相同操作
-        if "attn" in name and "to_k" in name:
-            original_module = getattr(module, "to_k")
-            lora_layer = LoRALayer(original_module.in_features, original_module.out_features, rank, alpha).to(original_module.weight.device)
-            setattr(module, "original_to_k", original_module)
-            setattr(module, "lora_to_k", lora_layer)
-            
-            def forward_k(self, x):
-                return self.original_to_k(x) + self.lora_to_k(x)
-            
-            module.to_k = forward_k.__get__(module)
-            
-        # 对 V 投影矩阵执行相同操作
-        if "attn" in name and "to_v" in name:
-            original_module = getattr(module, "to_v")
-            lora_layer = LoRALayer(original_module.in_features, original_module.out_features, rank, alpha).to(original_module.weight.device)
-            setattr(module, "original_to_v", original_module)
-            setattr(module, "lora_to_v", lora_layer)
-            
-            def forward_v(self, x):
-                return self.original_to_v(x) + self.lora_to_v(x)
-            
-            module.to_v = forward_v.__get__(module)
+# 创建
+class LinearWithLoRA(nn.Module):
+    def __init__(self, original_linear, lora_layer):
+        super().__init__()
+        self.original_linear = original_linear
+        self.lora_layer = lora_layer
     
+    def forward(self, x):
+        return self.original_linear(x) + self.lora_layer(x)
+
+def inject_lora_into_unet(unet, rank=16, alpha=32):
+    lora_layers_count = 0
+    
+    # 遍历 UNet 的所有模块，找到 Attention 模块
+    for name, module in unet.named_modules():
+        # 找到包含 to_q, to_k, to_v 注意力模块（attn1 或 attn2）
+        if ("attn1" in name or "attn2" in name) and hasattr(module, 'to_q'):
+            # 处理 to_q 投影矩阵
+            if hasattr(module, 'to_q'):
+                original_module = module.to_q
+                lora_layer = LoRALayer(
+                    in_features=original_module.in_features,
+                    out_features=original_module.out_features,
+                    rank=rank,
+                    alpha=alpha
+                ).to(original_module.weight.device)
+                
+                # 创建包装模块并替换原始模块
+                wrapped_module = LinearWithLoRA(original_module, lora_layer)
+                module.to_q = wrapped_module
+                lora_layers_count += 1
+            
+            # 处理 to_k 投影矩阵
+            if hasattr(module, 'to_k'):
+                original_module = module.to_k
+                lora_layer = LoRALayer(
+                    in_features=original_module.in_features,
+                    out_features=original_module.out_features,
+                    rank=rank,
+                    alpha=alpha
+                ).to(original_module.weight.device)
+                
+                wrapped_module = LinearWithLoRA(original_module, lora_layer)
+                module.to_k = wrapped_module
+                lora_layers_count += 1
+            
+            # 处理 to_v 投影矩阵
+            if hasattr(module, 'to_v'):
+                original_module = module.to_v
+                lora_layer = LoRALayer(
+                    in_features=original_module.in_features,
+                    out_features=original_module.out_features,
+                    rank=rank,
+                    alpha=alpha
+                ).to(original_module.weight.device)
+                
+                wrapped_module = LinearWithLoRA(original_module, lora_layer)
+                module.to_v = wrapped_module
+                lora_layers_count += 1
+    
+    print(f"成功注入了 {lora_layers_count} 个 LoRA 层")
     return unet
+
 ```
 
 ## 5. 加载模型配置 LoRA
 
 现在我们加载 Stable Diffusion 基础模型，并应用我们实现的 LoRA 层：
 
+
+
+```python
+# 如果模型下载速度较慢，建议使用 hfd 下载模型，hfd 的使用详见 https://hf-mirror.com/
+#!hfd benjamin-paine/stable-diffusion-v1-5 --hf_username your_huggingface_name --hf_token your_huggingface_token --local-dir your_local_dir
+```
+
+
 ```python
 # 模型 ID
-model_id = "runwayml/stable-diffusion-v1-5"
+model_id = "./sd-15"
 
 # 加载 UNet 模型（扩散模型的核心）
 unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet").to(device)
@@ -203,11 +315,40 @@ print(f"总参数数量: {total_params:,}")
 print(f"可训练参数比例: {trainable_params/total_params:.2%}")
 ```
 
-从输出可以看到，LoRA 只训练了约 0.84M 参数，仅占总参数的 0.1%左右，这就是 LoRA 参数高效的原因！
+    成功注入了 96 个 LoRA 层
+    可训练参数数量: 2,390,016
+    总参数数量: 861,910,980
+    可训练参数比例: 0.28%
+
+
+从输出可以看到，LoRA 只训练了约 2.4M 参数，仅占总参数的 0.3%左右，这就是 LoRA 参数高效的原因！
 
 ## 6. 数据准备
 
-我们使用 Danbooru2021 数据集的一个子集进行训练，这个数据集包含大量高质量的二次元图像：
+如何准备 Stable Diffusion 的微调数据集非常的重要，不论是在图像还是文本，数据集往往能够决定一个微调模型最后的质量。由于真人图片涉及到了一些隐私，在这里的话我们使用的是 [Danbooru2021](https://gwern.net/danbooru2021) 数据集，这个数据集全部是由二次元的图像组成，我们不会选择这个数据集里面的所有图像来做，而是只选择一个子集来完成。在网上并没有现成的子集，这里需要我们自己搜索。首先介绍一下该数据集的一些基本属性
+
+### 1. 数据集简介
+Danbooru2021 拥有 490 万多张图像，并标注了 1.62 亿多个标签，图像和标签主要由广大的动漫爱好者社区上传和标注。
+
+### 2. 数据标签
+
+danbooru 的标签系统是其灵魂，这些标签并非预先设定的 tag，而是由用户自由添加。目前的标签已经达到了约 39.2 万种标签。平均每张图像差不多有 29 个标签。 标签内容如下：
+
+- 人物特征：如发型（long_hair, twintails）、瞳色（blue_eyes）、表情（smile）、性别（1girl, 1boy）
+
+- 服饰与装扮：如服装类型（school_uniform, maid_dress）、配饰（hair_ribbon, cat_ears）
+
+- 构图与场景：如视角（from_above）、背景（outdoors, sky）、画面中的人物数量（solo）
+
+- 艺术风格：如艺术家/画师（artist:name）、作品系列（fate/grand_order）
+
+- 元标签：如评分（rating:safe, rating:questionable）和版权信息
+
+
+</br> 一般来说，微调数据集往往从风格或者人物入手，比如训练一个 fate 系列的 saber/远坂凛或者训练某个动漫的画风。这里的话首先我们主要尝试只生产动漫的画风，不考虑任何角色或者风格，也就是能生成二次元的图像即可。数据集至少需要收集 20 张以上的图片。
+
+接着我们将图片进行缩放并裁剪到 512x512 或 512x768 或 768x512 这 3 种尺寸之一，这里我们选的是 512x512 的尺寸，有需要注意的是 Stable Diffusion 同一次训练中只能处理一种尺寸的图片。
+
 
 ```python
 class DanbooruDataset(Dataset):
@@ -244,7 +385,7 @@ class DanbooruDataset(Dataset):
 
 # 创建数据集和数据加载器
 # 注意：请将路径替换为你的数据集实际路径
-dataset = DanbooruDataset('./danbooru2021_subset/')
+dataset = DanbooruDataset('./danbooru2021')
 dataloader = DataLoader(
     dataset, 
     batch_size=4,  # 批次大小
@@ -271,115 +412,130 @@ def show_samples(dataset, num_samples=4):
 show_samples(dataset)
 ```
 
+    数据集大小: 57 张图像
+
+
+
+    
+![png](output_13_1.png)
+    
+
+
 ## 7. 训练 LoRA 模型
 
 现在我们来设置训练参数并开始训练：
 
+
 ```python
 # 训练参数设置
-num_epochs = 10  # 训练轮数
-learning_rate = 1e-4  # 学习率，LoRA 通常使用比全参数微调稍大的学习率
-gradient_accumulation_steps = 4  # 梯度累积步数
-weight_decay = 1e-2  # 权重衰减，防止过拟合
+num_epochs = 20
+learning_rate = 1e-4
+gradient_accumulation_steps = 4
+weight_decay = 1e-2
 
-# 优化器，只优化可训练的 LoRA 参数
+# 优化器
 optimizer = optim.AdamW(
     [p for p in unet.parameters() if p.requires_grad],
     lr=learning_rate,
     weight_decay=weight_decay
 )
 
-# 学习率调度器，使用余弦退火策略
 lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
     optimizer, 
-    T_max=num_epochs,  # 周期
-    eta_min=1e-6  # 最小学习率
+    T_max=num_epochs,
+    eta_min=1e-6
 )
 
-# 损失函数，扩散模型通常使用 MSE 损失
 criterion = nn.MSELoss()
-
-# 加载噪声调度器
 noise_scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
-
-# 记录训练损失
 train_losses = []
 
-# 开始训练
+# 🔥 添加调试模式
+debug_mode = True
+
+
 print("开始训练...")
 for epoch in range(num_epochs):
-    unet.train()  # 设置为训练模式
+    unet.train()
     total_loss = 0
     
     for step, batch in enumerate(dataloader):
-        # 将图像移动到设备
-        clean_images = batch.to(device)
-        
-        # 随机采样时间步
-        timesteps = torch.randint(
-            0, noise_scheduler.num_train_timesteps, 
-            (clean_images.shape[0],), 
-            device=device
-        ).long()
-        
-        # 生成随机噪声
-        noise = torch.randn_like(clean_images)
-        
-        # 前向扩散过程：向干净图像添加噪声
-        noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
-        
-        # 前向传播
-        with torch.cuda.amp.autocast():  # 混合精度训练，节省显存
-            # 使用空文本作为条件（也可以使用描述性文本）
-            text_inputs = tokenizer(
-                "",  # 空文本
-                return_tensors="pt",
-                padding="max_length",
-                max_length=77,
-                truncation=True
-            )
-            encoder_hidden_states = text_encoder(text_inputs.input_ids.to(device))[0]
+        try:
+            # 将图像移动到设备
+            clean_images = batch.to(device)
+            batch_size = clean_images.shape[0]  
             
-            # 预测噪声
-            noise_pred = unet(noisy_images, timesteps, encoder_hidden_states).sample
+            # 使用 VAE 编码器将 RGB 图像转换为潜在空间表示
+            with torch.no_grad():
+                latents = vae.encode(clean_images).latent_dist.sample()
+                latents = latents * vae.config.scaling_factor
             
-            # 计算损失
-            loss = criterion(noise_pred, noise)
-            # 梯度累积：将损失除以累积步数
-            loss = loss / gradient_accumulation_steps
-        
-        # 反向传播
-        loss.backward()
-        
-        # 梯度累积：每累积指定步数后更新参数
-        if (step + 1) % gradient_accumulation_steps == 0:
-            optimizer.step()  # 更新参数
-            optimizer.zero_grad()  # 清空梯度
-        
-        # 累加损失
-        total_loss += loss.item()
-        
-        # 打印训练进度
-        if step % 100 == 0 and step > 0:
-            avg_loss = total_loss / (step + 1)
-            print(f"Epoch {epoch}, Step {step}, 平均损失: {avg_loss:.4f}")
+            # 随机采样时间步
+            timesteps = torch.randint(
+                0, noise_scheduler.config.num_train_timesteps,
+                (batch_size,),  
+                device=device
+            ).long()
+            
+            # 生成随机噪声
+            noise = torch.randn_like(latents)
+            
+            # 前向扩散过程
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            
+            # 前向传播
+            with torch.amp.autocast('cuda'):
+                text_inputs = tokenizer(
+                    [""] * batch_size,  # 🔥 创建与批次大小匹配的空文本列表
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=77,
+                    truncation=True
+                )
+                encoder_hidden_states = text_encoder(text_inputs.input_ids.to(device))[0]
+                
+                # 🔥 调试信息（只在第一步显示）
+                if step == 0 and epoch == 0:
+                    print(f"批次大小: {batch_size}")
+                    print(f"修复后文本编码形状: {encoder_hidden_states.shape}")
+                    print(f"潜在空间形状: {latents.shape}")
+                    print(f"噪声潜在空间形状: {noisy_latents.shape}")
+                
+                # 预测噪声
+                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                
+                # 计算损失
+                loss = criterion(noise_pred, noise)
+                loss = loss / gradient_accumulation_steps
+            
+            # 反向传播
+            loss.backward()
+            
+            # 梯度累积
+            if (step + 1) % gradient_accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            total_loss += loss.item()
+            
+            # 打印训练进度
+            if step % 50 == 0 and step > 0:
+                avg_loss = total_loss / (step + 1)
+                print(f"Epoch {epoch}, Step {step}, 平均损失: {avg_loss:.4f}")
+                
+        except Exception as e:
+            print(f"训练步骤出错 - Epoch {epoch}, Step {step}: {str(e)}")
+            continue
     
     # 计算并记录 epoch 平均损失
-    avg_epoch_loss = total_loss / len(dataloader)
-    train_losses.append(avg_epoch_loss)
-    print(f"Epoch {epoch} 完成, 平均损失: {avg_epoch_loss:.4f}")
+    if len(dataloader) > 0:  # 避免除零错误
+        avg_epoch_loss = total_loss / len(dataloader)
+        train_losses.append(avg_epoch_loss)
+        print(f"Epoch {epoch} 完成, 平均损失: {avg_epoch_loss:.4f}")
     
     # 更新学习率
     lr_scheduler.step()
 
-# 绘制损失曲线
-plt.figure(figsize=(10, 5))
-plt.plot(train_losses)
-plt.title('训练损失曲线')
-plt.xlabel('Epoch')
-plt.ylabel('损失值')
-plt.grid(True)
-plt.show()
 
 # 保存训练好的 LoRA 参数
 torch.save({
@@ -387,7 +543,37 @@ torch.save({
     'optimizer_state_dict': optimizer.state_dict(),
     'train_losses': train_losses
 }, 'lora_weights.pth')
+
+print("训练完成！")
 ```
+
+    开始训练...
+    批次大小: 4
+    修复后文本编码形状: torch.Size([4, 77, 768])
+    潜在空间形状: torch.Size([4, 4, 64, 64])
+    噪声潜在空间形状: torch.Size([4, 4, 64, 64])
+    Epoch 0 完成, 平均损失: 0.0399
+    Epoch 1 完成, 平均损失: 0.0311
+    Epoch 2 完成, 平均损失: 0.0338
+    Epoch 3 完成, 平均损失: 0.0344
+    Epoch 4 完成, 平均损失: 0.0408
+    Epoch 5 完成, 平均损失: 0.0251
+    Epoch 6 完成, 平均损失: 0.0315
+    Epoch 7 完成, 平均损失: 0.0242
+    Epoch 8 完成, 平均损失: 0.0277
+    Epoch 9 完成, 平均损失: 0.0336
+    Epoch 10 完成, 平均损失: 0.0304
+    Epoch 11 完成, 平均损失: 0.0237
+    Epoch 12 完成, 平均损失: 0.0232
+    Epoch 13 完成, 平均损失: 0.0315
+    Epoch 14 完成, 平均损失: 0.0365
+    Epoch 15 完成, 平均损失: 0.0277
+    Epoch 16 完成, 平均损失: 0.0275
+    Epoch 17 完成, 平均损失: 0.0291
+    Epoch 18 完成, 平均损失: 0.0324
+    Epoch 19 完成, 平均损失: 0.0279
+    训练完成！
+
 
 从损失曲线可以看到，随着训练的进行，损失值逐渐下降并趋于稳定，表明模型正在有效学习二次元风格特征。
 
@@ -395,7 +581,12 @@ torch.save({
 
 训练完成后，让我们评估模型的生成效果：
 
+
 ```python
+from transformers import CLIPImageProcessor
+
+feature_extractor = CLIPImageProcessor.from_pretrained(model_id, subfolder="feature_extractor")
+
 # 加载训练好的 LoRA 权重
 checkpoint = torch.load('lora_weights.pth')
 unet.load_state_dict(checkpoint['lora_state_dict'])
@@ -407,14 +598,15 @@ pipe = StableDiffusionPipeline(
     vae=vae,
     tokenizer=tokenizer,
     scheduler=DDPMScheduler.from_pretrained(model_id, subfolder="scheduler"),
+    feature_extractor=feature_extractor,  # 🔥 添加这个参数
     safety_checker=None  # 为了演示方便，关闭安全检查器
 ).to(device)
 
 # 定义生成参数
-prompt = "1girl, solo, beautiful detailed eyes, long hair, flowing dress, anime style, masterpiece"
-negative_prompt = "lowres, bad anatomy, bad hands, text, error, low quality"
-num_inference_steps = 50
-guidance_scale = 7.5
+prompt = "japanese animation, a girl, upper body, yellow dress, smiling, looking at viewer"
+negative_prompt = "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry"
+num_inference_steps = 75
+guidance_scale = 5
 
 # 生成图像
 def generate_images(pipe, prompt, negative_prompt, num_images=3):
@@ -441,6 +633,7 @@ original_pipe = StableDiffusionPipeline(
     vae=vae,
     tokenizer=tokenizer,
     scheduler=DDPMScheduler.from_pretrained(model_id, subfolder="scheduler"),
+    feature_extractor=feature_extractor, 
     safety_checker=None
 ).to(device)
 
@@ -450,19 +643,19 @@ original_images = generate_images(original_pipe, prompt, negative_prompt)
 # 显示对比结果
 def show_comparison(original, lora, prompt):
     plt.figure(figsize=(15, 10))
-    plt.suptitle(f'提示词: {prompt}', fontsize=12)
+    plt.suptitle(f'prompt: {prompt}', fontsize=12)
     
     for i in range(len(original)):
         # 原始模型结果
         plt.subplot(2, len(original), i+1)
         plt.imshow(original[i])
-        plt.title('原始模型')
+        plt.title('original model')
         plt.axis('off')
         
         # LoRA 微调结果
         plt.subplot(2, len(original), i+1+len(original))
         plt.imshow(lora[i])
-        plt.title('LoRA 微调模型')
+        plt.title('LoRA model')
         plt.axis('off')
     
     plt.tight_layout()
@@ -472,14 +665,53 @@ def show_comparison(original, lora, prompt):
 show_comparison(original_images, lora_images, prompt)
 ```
 
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+    
+![png](output_17_8.png)
+    
+
+
 通过对比可以明显看出：
 - 原始模型生成的图像风格偏向写实
 - LoRA 微调后的模型生成的图像具有明显的二次元风格特征
 - 眼睛、头发等细节更符合动漫审美
 
+另外，由于数据集较少和模型本身参数不够的情况下，尽管图片的生成完成了基本的遵循，但是可以发现原始模型的图片生成效果很差，脸部清晰度不够。
+
 ## 9. LoRA 效果对比
 
 让我们比较不同秩（rank）对生成效果的影响：
+
 
 ```python
 # 测试不同 rank 值的效果
@@ -500,6 +732,7 @@ for r in ranks:
         text_encoder=text_encoder,
         vae=vae,
         tokenizer=tokenizer,
+        feature_extractor=feature_extractor,
         scheduler=DDPMScheduler.from_pretrained(model_id, subfolder="scheduler"),
         safety_checker=None
     ).to(device)
@@ -521,10 +754,84 @@ plt.tight_layout()
 plt.show()
 ```
 
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+    成功注入了 96 个 LoRA 层
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+    完成 rank=4 的图像生成
+
+
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+    成功注入了 96 个 LoRA 层
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+    完成 rank=8 的图像生成
+
+
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+    成功注入了 96 个 LoRA 层
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+    完成 rank=16 的图像生成
+
+
+    You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
+
+
+    成功注入了 96 个 LoRA 层
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+
+      0%|          | 0/75 [00:00<?, ?it/s]
+
+
+    完成 rank=32 的图像生成
+
+
+
+    
+![png](output_19_20.png)
+    
+
+
 从结果可以观察到：
 - 较小的 rank（如 4）：参数少，训练快，但风格表达能力有限
 - 中等的 rank（如 16）：在参数数量和表达能力之间取得平衡
-- 较大的 rank（如 32）：表达能力更强，但参数增加，训练成本提高，可能导致过拟合
+- 较大的 rank（如 32）：表达能力更强，但参数增加，训练成本提高，可能导致过拟合（如图所示）
 
 ## 10. 总结
 

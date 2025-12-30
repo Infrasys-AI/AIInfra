@@ -16,7 +16,7 @@ $$
 
 其中，$w_n$ 是待生成的下一个词元，$w_1,w_2,\ldots,w_{n-1}$ 是已生成的词元序列。在文本生成过程中，大模型正是通过不同的采样算法，从这个概率分布中确定最终输出的 $w_n$。
 
-![image2](./images/01SamplingBasics02.png)
+![image2](./images/01SamplingBasics02.png)[Code01Speculative.md](Code01Speculative.md)
 
 本篇文章将从简单到复杂，依次介绍三种常见的大模型输出采样方法：随机采样、贪婪采样和束搜索采样，帮助大家清晰理解每种策略的核心逻辑与实际效果。
 

@@ -1,6 +1,8 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 03: 无限长文本生成的奥秘
+# CODE 03: StreamingLLM无限长文本生成(DONE)
+
+> Author by: 韩钰
 
 在大语言模型的实际应用中，我们经常会遇到一个令人困扰的问题：当对话或文本长度超过一定限制时，模型似乎就会"失忆"，无法记住先前的内容。这种限制并非模型设计缺陷，而是源于 Transformer 架构在**内存使用**和**计算复杂度**上的固有限制。传统的键值缓存（KV Cache）机制需要存储所有历史 token 的键值对，导致内存占用随序列长度线性增长，最终造成内存不足或性能下降。
 

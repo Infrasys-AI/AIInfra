@@ -1,6 +1,8 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 04: KTransformers 核心实现
+# CODE 04: KTransformers 核心实现(DONE)
+
+> Author by: 韩钰
 
 KTransformers 是清华大学 KVCache.AI 团队与趋境科技联合开发的开源大语言模型推理优化框架，其核心创新在于能够在单张 24GB 显存的消费级显卡上运行 DeepSeek-R1/V3 等 671B 参数的满血版大模型。
 

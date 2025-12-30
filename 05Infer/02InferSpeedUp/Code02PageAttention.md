@@ -1,6 +1,8 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# CODE 02: PagedAttention 复现
+# CODE 02: PagedAttention 复现(DONE)
+
+> Author by: 韩钰
 
 这篇文章将带你深入理解 PagedAttention 的工作原理，并通过简化的 Python 实现来展示其核心机制，帮助你在有限资源下高效运行大模型。
 

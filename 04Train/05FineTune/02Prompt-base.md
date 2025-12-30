@@ -211,18 +211,111 @@ class PrefixEncoder(torch.nn.Module):
 
 ## 3. Prompt-tuning & P-tuning
 
-Soft-Prompt
-① 注意和 Prefix 的区别（KV、QKV、不需要重参数化）
-② 比 Prefix 更轻量化
-③ 模型越大 Prompt 效果越好
-④ Prompt 的初始化策略
-⑤ Prompt 的长度
-⑥ 和 P-tuning 的区别
-⑦ 泛化能力更强
-⑧ Prompt ensemble
-⑨ Prompt 的可解释性：a.临近语义 b.不同初始化策略 c.容量冗余问题 d.提示域问题
+> Lester B, Al-Rfou R, Constant N. The power of scale for parameter-efficient prompt tuning[J]. arXiv preprint arXiv:2104.08691, 2021.
+>
+> Liu X, Zheng Y, Du Z, et al. GPT understands, too[J]. AI Open, 2024, 5: 208-215.
 
+早在 [5] 提出来之前，就有 Prompt-tuning 的概念，不过在那时的 Prompt 是 Hard Prompt，亦称为硬提示，它是由人类设计的、由真实单词组成的自然语言文本，比如`把下面的句子翻译成中文：`作为硬提示输入给大模型。这种硬提示优点是直观，不需要训练任何参数，且具备一定的效果；缺点是不可微，因为它和普通的输入文本没有任何区别，因此它对下游任务的效果十分有限，十分依赖于大模型本身的零样本泛化能力。
 
+于是，[5] 提出了使用 Soft Prompt 来替代 Hard Prompt，相比于 Hard Prompt，它是一组连续可学习的向量，它可以像训练神经网络权重一样，通过梯度下降来微调这些向量的数值，使其在下游任务中达到最优。在本节中，为了方便叙述我们把 Prompt-tuning 视为 Soft Prompt-tuning。而 P-tuning 和 Prompt-tuning 从架构来看十分相似，因此放在一起来讲。
+
+### Prompt-tuning
+
+#### 模型架构
+
+如下图所示，对于一般的微调（此处指全量微调，Model Tuning 或 Full fine-tuning），每一个下游任务都需要完整存储一份模型的副本，而对于 Prompt-tuning，每一个下游任务只需要存储少量的 Prompt 参数，所有的下游任务共享一个预训练模型副本。
+
+![image-20251210144253712](./images/02Prompt-base06.png)
+
+那么 Prompt 究竟是什么呢？我们可以通过看下面这部分代码的“第1部分”，发现 Prompt 的本质就是 Embedding 向量，每个 Prompt 就是一个 `1*dim` 的向量。有些模型是 Encoder only 或 Decoder only 模型，所以只在 Encoder 或 Decoder 部分添加 Prompt，此时代码中的`config.num_transformer_submodules=1`，而有些模型是 Encoder & Decoder 架构，此时代码中的`config.num_transformer_submodules=2`，简单起见，我们在此处只讨论 Encoder only 或 Decoder only 模型。
+
+针对上述三种
+
+```python
+# 代码来源：https://github.com/huggingface/peft/blob/main/src/peft/tuners/prompt_tuning/model.py
+import math
+import torch
+from peft.utils.integrations import gather_params_ctx
+from .config import PromptTuningInit
+class PromptEmbedding(torch.nn.Module):
+    def __init__(self, config, word_embeddings):
+        super().__init__()
+        ## ==============第1部分：Prompt本质==============
+        # Prompt总个数 = 单个模块添加的Prompt个数 * 模块的个数
+        total_virtual_tokens = config.num_virtual_tokens * config.num_transformer_submodules
+        # Prompt：可以看到一个Prompt就是一个1*token_dim的向量，这里共有total_virtual_tokens个Prompt
+        self.embedding = torch.nn.Embedding(total_virtual_tokens, config.token_dim)
+        ## ==============第2部分：Prompt初始化策略==============
+        # 初始化策略 1：词汇表采样
+        if config.prompt_tuning_init == PromptTuningInit.SAMPLE_VOCAB and not config.inference_mode:
+            # Randomly sample tokens from the tokenizer's vocab
+            vocab_size = word_embeddings.num_embeddings
+            init_token_ids = torch.randint(0, vocab_size, (total_virtual_tokens,), dtype=torch.long).to(
+                word_embeddings.weight.device
+            )
+            with gather_params_ctx(word_embeddings.parameters()):
+                word_embedding_weights = word_embeddings(init_token_ids).detach().clone()
+            word_embedding_weights = word_embedding_weights.to(torch.float32)
+            self.embedding.weight = torch.nn.Parameter(word_embedding_weights)
+		# 初始化策略 2：文本初始化
+        elif config.prompt_tuning_init == PromptTuningInit.TEXT and not config.inference_mode:
+            from transformers import AutoTokenizer
+            tokenizer_kwargs = config.tokenizer_kwargs or {}
+            # security: disallow trust_remote_code, as this could allow code execution when loading a prompt tuning
+            # checkpoint
+            tokenizer_kwargs.pop("trust_remote_code", None)
+            tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name_or_path, **tokenizer_kwargs)
+            init_text = config.prompt_tuning_init_text
+            init_token_ids = tokenizer(init_text)["input_ids"]
+            # Trim or iterate until num_text_tokens matches total_virtual_tokens
+            num_text_tokens = len(init_token_ids)
+            if num_text_tokens > total_virtual_tokens:
+                init_token_ids = init_token_ids[:total_virtual_tokens]
+            elif num_text_tokens < total_virtual_tokens:
+                num_reps = math.ceil(total_virtual_tokens / num_text_tokens)
+                init_token_ids = init_token_ids * num_reps
+            init_token_ids = init_token_ids[:total_virtual_tokens]
+            init_token_ids = torch.LongTensor(init_token_ids).to(word_embeddings.weight.device)
+            with gather_params_ctx(word_embeddings.parameters()):
+                word_embedding_weights = word_embeddings(init_token_ids).detach().clone()
+            word_embedding_weights = word_embedding_weights.to(torch.float32)
+            self.embedding.weight = torch.nn.Parameter(word_embedding_weights)
+	## ==============第3部分：返回Prompt==============
+    def forward(self, indices):
+        # 返回生成的 Prompt
+        prompt_embeddings = self.embedding(indices)
+        return prompt_embeddings
+```
+
+我们已经知道 Prompt 本质是个 Embedding 向量，论文中还指出，Prompt 的初始化策略对微调下游任务影响很大，他们主要探讨了 3 种不同的初始化策略（见上面代码的“第2部分”）：
+
+0. 随机初始化
+1. 词汇表采样初始化
+2. 文本初始化
+
+随机初始化很简单，在代码中，只要不满足那两个条件语句，那便是随机初始化。词汇表初始化，指的是随机从词汇表中挑选 Prompt 数量的词汇，并拿它们对应的连续向量进行初始化。文本初始化是词汇表初始化的一种特殊情况，词汇表初始化指的是从词汇表中随机挑选词汇对应的向量，而文本初始化指的是从词汇表中挑选用户给定文本的词汇对应的向量。上述描述的是代码实现思路，而在论文中，词汇表初始化又被进一步限制为从最常见的前 5000 个词汇中随机采样（代码中是从所有词汇中随机采样）。针对这三种初始化策略，论文给出了相应的实验对其进行分析，后面我们再探讨。
+
+根据上面代码，我们只知道了 Prompt 是什么以及 Prompt 的不同初始化策略，还有一个问题等待我们去解决，那就是 Prompt 到底怎么用，用在何处？下图与 Prefix-tuning 一节中的图十分相似，不同的在于 Prompt-tuning 中：① Prompt 是和 Token 同层级的，② Prompt 且只在输入层添加，且添加在 Token 的前面 ③ Prompt-tuning 不需要重参数化。由于 Prompt 是和 Token 是同层级的，因此每层都有 N 个输入和 N 个输出，其中 N 为 Prompt 个数与 Token 个数之和。而在 Prefix-tuning 中，Prefix 是和 Token 经过 QKV 投影后的向量同层级的，且 Prefix 只有 k 和 v，由于没有 q，因此每一层的输出个数是 M 个，其中 M 是 Token 的个数。
+
+![image-20251210144253712](./images/02Prompt-base07.png)
+
+#### 实验结论
+
+Prompt-tuning 进行了一些实验，探讨了一些参数设置对微调性能的影响，如 Prompt 的长度以及初始化。由于 Prompt-tuning 与 Prefix-tuning 提出时所使用的基础模型不同（Prompt Tuning 使用 T5 模型，Prefix-Tuning 使用 GPT-2 和 BART 模型）以及任务领域不同（Prompt-tuning 专注于 SuperGLUE 基准测试，属于 NLU 自然语言理解任务，Prefix-Tuning 则专注于生成任务 NLG），因此没有进行性能上的比较。
+
+在此处，我们只简单讨论一下 Prompt 长度及初始化策略，如下图 a，我们可以发现，Prompt 长度并非越大越好，比如 Prompt 长度为 150 时，其效果有时甚至不如长度为 20 时，其次，如图 b，Prompt 的初始化策略对下游任务存在显著影响，Class Label 即我们说的文本初始化，可以发现，随机初始化在模型较小时，效果大打折扣。其余图 c 和 d 不做过多描述，有兴趣的读者自行阅读原文。从这 4 个图中，我们可以得到一个重要的发现，当模型越来越大时，无论在何种设置下（各种 Prompt 长度或各种初始化策略），模型的性能都变得十分稳定。
+
+![image-20251210163434561](./images/02Prompt-base08.png)
+
+此外，论文还将 Prompt-tuning 与 全量微调和 Hard Prompt-tuning（图中写成是 Prompt Design）进行对比，如下图，实验结果表明，随着模型增大，Prompt-tuning 逐渐趋于全量微调的性能，但 Prompt Design 则远低于其余二者。
+
+![image-20251210164357261](./images/02Prompt-base09.png)
+
+论文在实验中还提到一点，Prompt-tuning 的泛化性比全量微调更好，即让模型在同一个特定领域的下游任务 A 上分别进行 Prompt-tuning 和全量微调，然后在另外一个下游任务 B 上进行评估，目的是测试在特定任务微调之后，模型对原本能力的保持程度还剩多少，结论是 Prompt-tuning 比全量微调的评估性能要高。这是显而易见的，从直觉上来讲，参数改动越少，则原始预训练模型的能力保持越多。
+
+在最后，论文还进行了一个十分有意思的实验，尝试讨论 Prompt 的可解释性，即模型学习到的 Prompt 到底有什么含义。作者使用 Prompt-tuning 对下游任务进行微调，然后拿训练后的 Prompt 与词汇表中所有单词向量计算余弦距离 。作者发现，在 BoolQ 数据集（包含大量科学类问题）上训练的 Prompt，其最近邻中高频出现 "science"、"technology"、"engineering"等词，这表明 Prompt 的一个重要作用可能是“启动”模型，让它进入特定的领域模式（例如：“注意，接下来要用科学知识来回答问题”）。在持续学习领域，不少研究者就提出了 Prompt-base 的持续学习方法，为每一个下游任务训练特定的 Prompt，在推理时选择相应的 Prompt 来执行特定的任务。
+
+### P-tuning
 
 P-tuning
 ① 侧重于 NLU，而 Prefix 侧重于 NLG，所以它没和 Prefix 进行比较
@@ -262,3 +355,7 @@ Prompt tuning 和 P tuning 的区别：Prompt tuning 在输入的开头加，并
 [3] Li X L, Liang P. Prefix-tuning: Optimizing continuous prompts for generation[J]. arXiv preprint arXiv:2101.00190, 2021.
 
 [4] https://zhuanlan.zhihu.com/p/361090497
+
+[5] Lester B, Al-Rfou R, Constant N. The power of scale for parameter-efficient prompt tuning[J]. arXiv preprint arXiv:2104.08691, 2021.
+
+[6] Liu X, Zheng Y, Du Z, et al. GPT understands, too[J]. AI Open, 2024, 5: 208-215.
