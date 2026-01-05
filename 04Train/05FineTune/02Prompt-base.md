@@ -215,9 +215,9 @@ class PrefixEncoder(torch.nn.Module):
 >
 > Liu X, Zheng Y, Du Z, et al. GPT understands, too[J]. AI Open, 2024, 5: 208-215.
 
-早在 [5] 提出来之前，就有 Prompt-tuning 的概念，不过在那时的 Prompt 是 Hard Prompt，亦称为硬提示，它是由人类设计的、由真实单词组成的自然语言文本，比如`把下面的句子翻译成中文：`作为硬提示输入给大模型。这种硬提示优点是直观，不需要训练任何参数，且具备一定的效果；缺点是不可微，因为它和普通的输入文本没有任何区别，因此它对下游任务的效果十分有限，十分依赖于大模型本身的零样本泛化能力。
+早在 Lester B $^{[5]}$提出来之前，就有 Prompt-tuning 的概念，不过在那时的 Prompt 是 Hard Prompt，亦称为硬提示，它是由人类设计的、由真实单词组成的自然语言文本，比如`把下面的句子翻译成中文：`作为硬提示输入给大模型。这种硬提示优点是直观，不需要训练任何参数，且具备一定的效果；缺点是不可微，因为它和普通的输入文本没有任何区别，因此它对下游任务的效果十分有限，十分依赖于大模型本身的零样本泛化能力。
 
-于是，[5] 提出了使用 Soft Prompt 来替代 Hard Prompt，相比于 Hard Prompt，它是一组连续可学习的向量，它可以像训练神经网络权重一样，通过梯度下降来微调这些向量的数值，使其在下游任务中达到最优。在本节中，为了方便叙述我们把 Prompt-tuning 视为 Soft Prompt-tuning。而 P-tuning 和 Prompt-tuning 从架构来看十分相似，因此放在一起来讲。
+于是，Lester B $^{[5]}$ 提出了使用 Soft Prompt 来替代 Hard Prompt，相比于 Hard Prompt，它是一组连续可学习的向量，它可以像训练神经网络权重一样，通过梯度下降来微调这些向量的数值，使其在下游任务中达到最优。在本节中，为了方便叙述我们把 Prompt-tuning 视为 Soft Prompt-tuning。而 P-tuning 和 Prompt-tuning 从架构来看十分相似，因此放在一起来讲。
 
 ### Prompt-tuning
 
@@ -227,9 +227,7 @@ class PrefixEncoder(torch.nn.Module):
 
 ![image-20251210144253712](./images/02Prompt-base06.png)
 
-那么 Prompt 究竟是什么呢？我们可以通过看下面这部分代码的“第1部分”，发现 Prompt 的本质就是 Embedding 向量，每个 Prompt 就是一个 `1*dim` 的向量。有些模型是 Encoder only 或 Decoder only 模型，所以只在 Encoder 或 Decoder 部分添加 Prompt，此时代码中的`config.num_transformer_submodules=1`，而有些模型是 Encoder & Decoder 架构，此时代码中的`config.num_transformer_submodules=2`，简单起见，我们在此处只讨论 Encoder only 或 Decoder only 模型。
-
-针对上述三种
+那么 Prompt 究竟是什么呢？我们可以通过看下面这部分代码的“第1部分”，发现 Prompt 的本质就是 Embedding 向量，每个 Prompt 就是一个 `1 × dim` 的向量。有些模型是 Encoder only 或 Decoder only 模型，所以只在 Encoder 或 Decoder 部分添加 Prompt，此时代码中的`config.num_transformer_submodules=1`，而有些模型是 Encoder & Decoder 架构，此时代码中的`config.num_transformer_submodules=2`，简单起见，我们在此处只讨论 Encoder only 或 Decoder only 模型。
 
 ```python
 # 代码来源：https://github.com/huggingface/peft/blob/main/src/peft/tuners/prompt_tuning/model.py
@@ -287,7 +285,7 @@ class PromptEmbedding(torch.nn.Module):
         return prompt_embeddings
 ```
 
-我们已经知道 Prompt 本质是个 Embedding 向量，论文中还指出，Prompt 的初始化策略对微调下游任务影响很大，他们主要探讨了 3 种不同的初始化策略（见上面代码的“第2部分”）：
+我们已经知道 Prompt 本质是个 Embedding 向量，论文中还指出，Prompt 的初始化策略对微调下游任务影响很大，他们主要探讨了 **3 种不同的初始化策略**（见上面代码的“第2部分”）：
 
 0. 随机初始化
 1. 词汇表采样初始化
@@ -303,30 +301,113 @@ class PromptEmbedding(torch.nn.Module):
 
 Prompt-tuning 进行了一些实验，探讨了一些参数设置对微调性能的影响，如 Prompt 的长度以及初始化。由于 Prompt-tuning 与 Prefix-tuning 提出时所使用的基础模型不同（Prompt Tuning 使用 T5 模型，Prefix-Tuning 使用 GPT-2 和 BART 模型）以及任务领域不同（Prompt-tuning 专注于 SuperGLUE 基准测试，属于 NLU 自然语言理解任务，Prefix-Tuning 则专注于生成任务 NLG），因此没有进行性能上的比较。
 
-在此处，我们只简单讨论一下 Prompt 长度及初始化策略，如下图 a，我们可以发现，Prompt 长度并非越大越好，比如 Prompt 长度为 150 时，其效果有时甚至不如长度为 20 时，其次，如图 b，Prompt 的初始化策略对下游任务存在显著影响，Class Label 即我们说的文本初始化，可以发现，随机初始化在模型较小时，效果大打折扣。其余图 c 和 d 不做过多描述，有兴趣的读者自行阅读原文。从这 4 个图中，我们可以得到一个重要的发现，当模型越来越大时，无论在何种设置下（各种 Prompt 长度或各种初始化策略），模型的性能都变得十分稳定。
+在此处，我们只简单讨论一下 Prompt 长度及初始化策略，如下图 a，我们可以发现，**Prompt 长度并非越大越好**，比如 Prompt 长度为 150 时，其效果有时甚至不如长度为 20 时，其次，如图 b，Prompt 的初始化策略对下游任务存在显著影响，Class Label 即我们说的文本初始化，可以发现，随机初始化在模型较小时，效果大打折扣。其余图 c 和 d 不做过多描述，有兴趣的读者自行阅读原文。从这 4 个图中，我们可以得到一个重要的发现，**当模型越来越大时，无论在何种设置下（各种 Prompt 长度或各种初始化策略），模型的性能都变得十分稳定**。
 
 ![image-20251210163434561](./images/02Prompt-base08.png)
 
-此外，论文还将 Prompt-tuning 与 全量微调和 Hard Prompt-tuning（图中写成是 Prompt Design）进行对比，如下图，实验结果表明，随着模型增大，Prompt-tuning 逐渐趋于全量微调的性能，但 Prompt Design 则远低于其余二者。
+此外，论文还将 Prompt-tuning 与 全量微调和 Hard Prompt-tuning（图中写成是 Prompt Design）进行对比，如下图，实验结果表明，**随着模型增大，Prompt-tuning 逐渐趋于全量微调的性能**，但 Prompt Design 则远低于其余二者。
 
 ![image-20251210164357261](./images/02Prompt-base09.png)
 
-论文在实验中还提到一点，Prompt-tuning 的泛化性比全量微调更好，即让模型在同一个特定领域的下游任务 A 上分别进行 Prompt-tuning 和全量微调，然后在另外一个下游任务 B 上进行评估，目的是测试在特定任务微调之后，模型对原本能力的保持程度还剩多少，结论是 Prompt-tuning 比全量微调的评估性能要高。这是显而易见的，从直觉上来讲，参数改动越少，则原始预训练模型的能力保持越多。
+论文在实验中还提到一点，**Prompt-tuning 的泛化性比全量微调更好**，即让模型在同一个特定领域的下游任务 A 上分别进行 Prompt-tuning 和全量微调，然后在另外一个下游任务 B 上进行评估，目的是测试在特定任务微调之后，模型对原本能力的保持程度还剩多少，结论是 Prompt-tuning 比全量微调的评估性能要高。这是显而易见的，从直觉上来讲，参数改动越少，则原始预训练模型的能力保持越多。
 
-在最后，论文还进行了一个十分有意思的实验，尝试讨论 Prompt 的可解释性，即模型学习到的 Prompt 到底有什么含义。作者使用 Prompt-tuning 对下游任务进行微调，然后拿训练后的 Prompt 与词汇表中所有单词向量计算余弦距离 。作者发现，在 BoolQ 数据集（包含大量科学类问题）上训练的 Prompt，其最近邻中高频出现 "science"、"technology"、"engineering"等词，这表明 Prompt 的一个重要作用可能是“启动”模型，让它进入特定的领域模式（例如：“注意，接下来要用科学知识来回答问题”）。在持续学习领域，不少研究者就提出了 Prompt-base 的持续学习方法，为每一个下游任务训练特定的 Prompt，在推理时选择相应的 Prompt 来执行特定的任务。
+在最后，论文还进行了一个十分有意思的实验，尝试讨论 **Prompt 的可解释性**，即模型学习到的 Prompt 到底有什么含义。作者使用 Prompt-tuning 对下游任务进行微调，然后拿训练后的 Prompt 与词汇表中所有单词向量计算余弦距离 。作者发现，在 BoolQ 数据集（包含大量科学类问题）上训练的 Prompt，其最近邻中高频出现 "science"、"technology"、"engineering"等词，这表明 Prompt 的一个重要作用可能是“启动”模型，让它进入特定的领域模式（例如：“注意，接下来要用科学知识来回答问题”）。在持续学习领域，不少研究者就提出了 Prompt-base 的持续学习方法，为每一个下游任务训练特定的 Prompt，在推理时选择相应的 Prompt 来执行特定的任务。
 
 ### P-tuning
 
-P-tuning
-① 侧重于 NLU，而 Prefix 侧重于 NLG，所以它没和 Prefix 进行比较
-② 离散提示是怎么微调的？与离散提示的区别？看图 2
-③ P-tuning 可以和离散提示一起用。
-④ P-tuning 可以用于冻结的预训练模型和 FFT 的预训练模型。
-⑤ 提示的位置放在哪
-⑥ 提示的长度（数量有很大影响 ，但并非越多越好 。这可能是因为提示词过多会导致在少样本数据上难以学习）
-⑦ 它还和 Prompt tuning 进行了比较
-⑧ P-tuning 和 Prompt-tuning 是同时期提出来的，且相互引用。Prompt Tuning 在其核心实验中主要关注的是 NLU (自然语言理解) 任务，但它是通过 NLG (自然语言生成) 的框架来实现的。
-⑨ 在代码层面和 Prompt-tuning 一致的
+#### 模型架构
+
+P-tuning 的模型架构和 Prompt-tuning **相同之处**在于 Prompt 和 Token是同层级的，且只在输入层添加；**不同之处**在于 P-tuning 的 Prompt 并非是最原始的 Embedding 向量，而是有一个 Prompt Encoder（LSTM 或 MLP）， 原先的 Embedding 向量经过这个 Prompt Encoder 后得到的向量才被我们称为 Prompt，进而与 Token 一同输入给模型，因此在 P-tuning 训练时不仅仅需要优化学习 Embedding 向量，还需要学习 Prompt Encoder。此外，P-tuning 不只是在添加在 Token 的前面，它可以插入在 Token 序列的其它位置，论文中的插入方式如下：`T = {[P0:i], x, [P(i+1):j ], y, [P(j+1):k]}`，其中`x`是输入，`y`是对应 NLU 任务中的标签 ，而`P`便是 Prompt。
+
+结合上一段话以及下面的代码，我们便能对 P-tuning 架构一目了然了，由于代码十分简单，且已经注释，因此不赘述。
+
+```python
+# 代码来源：https://github.com/huggingface/peft/blob/main/src/peft/tuners/p_tuning/model.py
+# Based on https://github.com/NVIDIA/NeMo/blob/main/nemo/collections/nlp/modules/common/prompt_encoder.py
+# with some refactor
+import warnings
+import torch
+from .config import PromptEncoderConfig, PromptEncoderReparameterizationType
+
+class PromptEncoder(torch.nn.Module):
+    """
+    The prompt encoder network that is used to generate the virtual token embeddings for p-tuning.
+    """
+    def __init__(self, config):
+        super().__init__()
+        self.token_dim = config.token_dim
+        self.input_size = self.token_dim
+        self.output_size = self.token_dim
+        self.hidden_size = config.encoder_hidden_size
+        # total_virtual_tokens即Prompt的个数
+        self.total_virtual_tokens = config.num_virtual_tokens * config.num_transformer_submodules
+        # encoder_type即Prompt Encoder是LSTM还是MLP
+        self.encoder_type = config.encoder_reparameterization_type
+
+        # embedding
+        self.embedding = torch.nn.Embedding(self.total_virtual_tokens, self.token_dim) # 原始的Embedding向量
+        if not config.inference_mode:
+            # Prompt-Encoder:LSTM
+            if self.encoder_type == PromptEncoderReparameterizationType.LSTM:
+                lstm_dropout = config.encoder_dropout
+                num_layers = config.encoder_num_layers
+                # LSTM
+                self.lstm_head = torch.nn.LSTM(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    num_layers=num_layers,
+                    dropout=lstm_dropout,
+                    bidirectional=True,
+                    batch_first=True,
+                )
+                self.mlp_head = torch.nn.Sequential(
+                    torch.nn.Linear(self.hidden_size * 2, self.hidden_size * 2),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(self.hidden_size * 2, self.output_size),
+                )
+			# Prompt-Encoder:MLP
+            elif self.encoder_type == PromptEncoderReparameterizationType.MLP:
+                encoder_num_layers_default = PromptEncoderConfig.encoder_num_layers
+                if config.encoder_num_layers != encoder_num_layers_default:
+                    warnings.warn(
+                        f"for {self.encoder_type.value}, the argument `encoder_num_layers` is ignored. "
+                        f"Exactly {encoder_num_layers_default} MLP layers are used."
+                    )
+                layers = [
+                    torch.nn.Linear(self.input_size, self.hidden_size),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(self.hidden_size, self.hidden_size),
+                    torch.nn.ReLU(),
+                    torch.nn.Linear(self.hidden_size, self.output_size),
+                ]
+                self.mlp_head = torch.nn.Sequential(*layers)
+            else:
+                raise ValueError("Prompt encoder type not recognized. Please use one of MLP (recommended) or LSTM.")
+
+    def forward(self, indices):
+        # 此处只是生成Prompt（“Embedding->Prompt Encoder”=Prompt），没有说明Prompt是如何与Token结合
+        input_embeds = self.embedding(indices)
+        if self.encoder_type == PromptEncoderReparameterizationType.LSTM:
+            output_embeds = self.mlp_head(self.lstm_head(input_embeds)[0])
+        elif self.encoder_type == PromptEncoderReparameterizationType.MLP:
+            output_embeds = self.mlp_head(input_embeds)
+        else:
+            raise ValueError("Prompt encoder type not recognized. Please use one of MLP (recommended) or LSTM.")
+        return output_embeds
+```
+
+#### 实验结论
+
+由于 Prompt-tuning 和 P-tuning 都是选择 NLU 作为基准，P-tuning 选择在极端缺乏数据的情况（few-shot）下与 Prompt-tuning 进行对比，结果如下表所示，在基于 ALBERT 的实验中，P-Tuning 的平均分（71.81）比 Lester 等人提出的 Prompt Tuning (58.56) 高出了 13 个百分点以上 。
+
+![image-20260105151449288](./images/02Prompt-base11.png)
+
+作者还进行了一些**消融实验**，主要是这三方面的消融：① Prompt Encoder 的类型 ② Prompt 的位置和数量。
+
+![image-20251210164357261](./images/02Prompt-base10.png)
+
+- Prompt Encoder 的类型：对比了 **LSTM**、**MLP** 和 **EMB**（即不使用 Encoder，直接优化 Embedding），结果表明 LSTM 和 MLP 表现稳健，而 EMB 在某些任务（如 WiC 和 CB）上表现不稳定且性能大幅下降 。这证明了对连续提示词之间相互依赖性建模的必要性 。
+- Prompt 的位置和数量：如上图中的表 7 所示，可以看到 Prompt 插入是否割裂完整句子、插入的位置以及个数都对结果有着不同的影响，一般而言，作者不建议 Prompt 的插入割裂完整句子，且 Prompt 的个数也并非越多越好，过多的 Prompt 可能因为训练数据有限而难以优化 ，还是需要根据具体任务而调参。
 
 ## 4. P-tuning v2
 
