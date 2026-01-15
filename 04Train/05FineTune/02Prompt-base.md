@@ -155,6 +155,7 @@ class Adapter(nn.Module):
 
 ```python
 # 代码来源：https://github.com/huggingface/peft/blob/main/src/peft/tuners/prefix_tuning/model.py
+# 本套代码既是 Prefix-tuning，又是 P-tuning v2 的代码。
 import torch
 class PrefixEncoder(torch.nn.Module):
     def __init__(self, config):
@@ -173,7 +174,8 @@ class PrefixEncoder(torch.nn.Module):
                 torch.nn.Tanh(),
                 torch.nn.Linear(encoder_hidden_size, num_layers * 2 * token_dim), # 参数量：en_size × N × 2 × dim + N × 2 × dim
             )
-        else: # 为 num_layers（即上文提的 L 层），每层生成 num_virtual_tokens 个 k_i 和 v_i
+        else:  # P-tuning v2的分支，见P-tuning v2一节
+            # 为 num_layers（即上文提的 L 层），每层生成 num_virtual_tokens 个 k_i 和 v_i
             # 参数量：L × T × 2 × dim
             self.embedding = torch.nn.Embedding(num_virtual_tokens, num_layers * 2 * token_dim)
         
@@ -411,19 +413,15 @@ class PromptEncoder(torch.nn.Module):
 
 ## 4. P-tuning v2
 
-Prompt tuning 和 P tuning 的区别：Prompt tuning 在输入的开头加，并且无需重参数化；P-tuning 可以在输入开头、中间等其它地方加，并且需要重参数化（LSTM 或 MLP）。
-①.Prompt Tuning (Lester et al.)：在输入层添加提示，直接训练提示本身。
-②.P-tuning (v1)：也在输入层添加提示，但是这些提示是由一个额外的编码器 (LSTM) 生成的 。
-③.P-tuning v2 (本文)：在每一层都添加提示，并且重新评估了重参数化 (MLP) 的必要性（发现它并非普遍有效）。
+根据 Prompt-tuning 和 P-tuning 的实验发现**，当模型不够大时这两种方法效果相比于全量微调而言差得较多**，如下图的蓝色部分，而 P-tuning v2 则能在各种中等尺寸的模型上同样能达到较好的效果。此外，**Prompt-tuning 和 P-tuning 不具备跨任务的通用性**，先前的实验都是在 NLU 任务上进行的，当遇到其他类型的任务（如序列标注任务）时，则这两种方法效果也大打折扣。
 
+![image-20260105160435806](./images/02Prompt-base12.png)
 
+当看到标题是 P-tuning v2 时，我们容易将其与 P-tuning v1 进行对比，但实际上它更像是 Prefix-tuning 的进化版。它的架构和 Prefix-tuning 几乎完全一样，同样是在各个 Transformer 层中的 N 个 Token 前加上若干个可学习的参数 $k_t$ 和  $v_t$（**注意！！！没有** $q_t$**！！！**），称之为 prefix。**但与 Prefix-tuning 不同的是，它并不总是采用重参数化**。因为作者发现，对于 NLU 任务，重参数化并不总是有效，当模型较小的时候，增加这些层会对效果产生不好的影响，见下图 4，在 RTE 和 CoNLL04 数据集中，重参数化大部分时候都比非重参数化要好，但是在另外两个数据集中，结果则相反，此外，通过图 4 也可以看出 Prompt 的长度也并非越高越好。因此在 Prefix-tuning 中的代码部分，可以看到有另外一个分支是不走重参数化的。
 
-① Prompt tuning 在小规模模型和困难任务上表现不好
-② MLP 在重参数化上有限制，重参数化效果不一致的问题（附录图 4）
-③ Prompt 长度对不同任务而言很重要，简单任务可以少一点，复杂任务多一点（附录图 4）
-④ 多任务学习，指在对每个任务微调之前，先把所有任务的数据拿过来一起训这个共享 Prompt，为这个共享 Prompt 提供一个好的初始化，再去微调每个子任务。
-⑤ 分类头变更（不重要）
-⑥ 深层比浅层提示更好
+![image-20260105162223928](./images/02Prompt-base13.png)
+
+**此外，为了提高模型跨任务的通用性，P-tuning v2 抛弃 Verbalizer 而选择采用 CLS Token**。所谓的 Verbalizer 其实是一个映射表，而不是一个神经网络层。在传统的 Prompt Tuning 中，我们将分类任务转化为“完形填空”。如果输入句子是“这部电影太赞了！”，那么我们在训练模型时会这样构造输入“这部电影太赞了！总的来说，它是 [MASK] 的”，接着模型会在 `[MASK]` 位置预测一个词。如果模型预测 `[MASK]` 是 “好”，Verbalizer 将其映射为标签“正面”，否则是“负面”。总而言之，Verbalizer 就是一个映射表。模型只负责说出某个“词”，而你根据这个映射表把这个词翻译成最终的业务分类。因为 Verbalizer 很难设计，对于简单的分类（好/坏）还行，但如果有 100 个类别，或者做“序列标注”（给每个字打标签），我们根本找不到 100 个合适的词来做映射。而 [CLS] Token 是 BERT 等 Transformer 编码器中的一个特殊占位符，它通常放在输入序列的第一个位置， 在自注意力机制中，[CLS] 这个位置的向量会去观察句子中所有的其他 Token，经过多层计算后，[CLS] 对应的输出向量被认为**包含了整个句子的语义信息**。因此，我们在训练时，会取出最后一层 Transformer 层的 [CLS] 向量，然后输入给一个线性分类器，最终根据线性分类器直接输出分类结果。
 
 ## 5. Prompt-base 适用范围
 
