@@ -53,7 +53,7 @@ Author by: 汪袁烁
 
 刚刚我们发现 forward tokens 是影响每个 token 处理延迟的核心，那么它是如何影响 LLM 推理的吞吐量的呢？
 
-![](.images/05 forwardtokens_TFLOPS.png)
+![](./images/05%20forwardtokens_TFLOPS.png)
 
 - Token 数较小时（左半段）：吞吐量随着 token 数快速上升；说明 GPU 此时还没有被完全“吃满”，瓶颈在 内存加载（memory-bound）。
 
