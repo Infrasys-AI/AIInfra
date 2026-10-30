@@ -36,4 +36,4 @@ Author by：杨小珑
 
 ## 推理性能对比
 
-（实验）TBD
+参见[实践：推理性能与成本评测](./Code04InferenceBenchmark.md)。实验包含离线模拟、InferenceX 公开数据分析，以及自有 vLLM/SGLang 服务的并发扫描，输出原始数据、指标汇总与交互报告。

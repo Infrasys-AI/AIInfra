@@ -15,6 +15,8 @@
 | 大模型推理框架 | 01 大模型推理流程 | [PPT](./01Introduction.pdf), [视频]() |
 | 大模型推理框架 | 02 大模型推理框架概述 | [PPT](./02InferEngine.pdf), [视频]() |
 | 大模型推理框架 | 03 vLLM 推理架构剖析(待更新) | [PPT](), [视频]() |
+| 性能指标 | 大模型推理性能指标 | [Markdown](./03Performance.md) |
+| 实践 | 公开评测数据分析与 vLLM/SGLang 服务压测 | [教程](./Code04InferenceBenchmark.md)、[代码](./code/inference_benchmark/) |
 
 ## 备注
 

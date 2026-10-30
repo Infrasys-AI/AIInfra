@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIInfra · 推理性能实验</title>
+  <style>
+    body {
+      font:
+        15px/1.6 system-ui,
+        sans-serif;
+      color: #173049;
+      background: #f3f6fa;
+      margin: 0;
+    }
+    main {
+      max-width: 1240px;
+      margin: auto;
+      padding: 32px;
+    }
+    h1 {
+      font-size: 30px;
+      margin: 0 0 8px;
+    }
+    .eyebrow {
+      color: #267d76;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+    p {
+      max-width: 1000px;
+    }
+    .panel {
+      background: white;
+      padding: 22px;
+      border: 1px solid #dfe6ef;
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: end;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: #526477;
+    }
+    input,
+    select {
+      font: inherit;
+      border: 1px solid #becbd7;
+      border-radius: 5px;
+      padding: 7px;
+      background: white;
+      color: #173049;
+      max-width: 240px;
+    }
+    input[type="number"] {
+      width: 100px;
+    }
+    input[type="range"] {
+      width: 240px;
+    }
+    svg {
+      width: 100%;
+      height: auto;
+      min-height: 240px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 13px;
+    }
+    th,
+    td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid #e3e9ef;
+      vertical-align: top;
+    }
+    th {
+      color: #526477;
+    }
+    small {
+      color: #526477;
+    }
+    a {
+      color: #076d9a;
+    }
+    .scroll {
+      overflow: auto;
+    }
+    .muted {
+      color: #687a8b;
+    }
+    .badge {
+      display: inline-block;
+      background: #e5f4ef;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+    }
+    summary {
+      cursor: pointer;
+    }
+  </style>
+  <main>
+    <div class="eyebrow">AIINFRA / BENCHMARK LAB</div>
+    <h1>吞吐、交互速度与成本</h1>
+    <p id="source"></p>
+    <span class="badge">按观测点筛选 · 未做插值或外推</span>
+    <div class="panel controls">
+      <div>
+        <label for="workload">模型 / 负载 / 来源</label
+        ><select id="workload"></select>
+      </div>
+      <div>
+        <label for="target">交互速度下限：1 / P90 ITL（输出 tok/s）</label
+        ><input id="target" type="number" min="0.1" step="1" />
+      </div>
+      <div>
+        <label for="slider">调整目标</label
+        ><input id="slider" type="range" min="1" step="1" />
+      </div>
+      <div>
+        <label for="tokens">吞吐与成本的 token 口径</label
+        ><select id="tokens">
+          <option value="output">输出 token</option>
+          <option value="total">输入 + 输出 token</option>
+        </select>
+      </div>
+      <div>
+        <label for="util">计费时间内有效负载比例（0–1）</label
+        ><input id="util" type="number" min="0.01" max="1" step="0.05" />
+      </div>
+    </div>
+    <p id="error" role="status"></p>
+    <div class="panel">
+      <h2>观测点分布</h2>
+      <p class="muted">
+        横轴：1 / P90 ITL；纵轴：每 GPU
+        吞吐。悬停查看来源日期、并发与运行链接。不同负载、精度、软件版本应分别解读。
+      </p>
+      <svg
+        id="plot"
+        viewBox="0 0 1120 400"
+        role="img"
+        aria-label="吞吐与交互速度散点图"
+      ></svg>
+    </div>
+    <div class="panel">
+      <h2 id="count">满足目标的观测点</h2>
+      <p class="muted">
+        每个配置系列选择吞吐最高的合格观测点。成本需输入对应硬件的
+        USD/GPU-hour；空值表示成本未知。该值为假设小时费率下的基础设施成本。
+      </p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>硬件 / 框架 / 精度 / 日期</th>
+              <th>观测点 / 并发</th>
+              <th>输出交互速度</th>
+              <th>吞吐 tok/s/GPU</th>
+              <th>USD/GPU-hour</th>
+              <th>USD / 百万 token</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <details class="panel">
+      <summary>原始数据、定义与复现信息</summary>
+      <p>
+        交互速度采用输出流的 P90 ITL
+        倒数；不能视为所有用户的保底生成速度。公开数据缺失错误计数时保留未知值，本地存在失败请求的运行不会生成成功报告。总
+        token 包含输入，Agentic
+        长前缀复用会显著改变这一数值。报告不评估模型回答质量。
+      </p>
+      <pre id="metadata"></pre>
+    </details>
+    <p class="muted">
+      AIInfra 教学示例 · 本地结果为非官方测量 · 价格与有效负载比例均为用户假设
+    </p>
+  </main>
+  <script id="data" type="application/json">
+    __BENCHMARK_DATA__
+  </script>
+  <script>
+    "use strict";
+    const data = JSON.parse(document.querySelector("#data").textContent);
+    const $ = (id) => document.getElementById(id),
+      prices = { ...data.prices };
+    const scope = [
+      "source",
+      "model",
+      "workload",
+      "hardware",
+      "framework",
+      "precision",
+      "spec_method",
+      "offload_mode",
+      "disagg",
+      "date",
+      "image",
+    ];
+    const keys = (p) => JSON.stringify(scope.map((k) => p[k] ?? null));
+    const workload = (p) => JSON.stringify([p.model, p.workload, p.source]);
+    const fmt = (n) =>
+      n == null
+        ? "—"
+        : Number(n).toLocaleString("en-US", { maximumFractionDigits: 3 });
+    const speed = (p) => (p.p90_itl_ms > 0 ? 1000 / p.p90_itl_ms : null);
+    const color = (p) => {
+      let h = 0;
+      for (const c of p.hardware) h = (h * 31 + c.charCodeAt(0)) | 0;
+      return `hsl(${Math.abs(h) % 360},60%,40%)`;
+    };
+    function element(tag, text, parent) {
+      const n = document.createElement(tag);
+      if (text != null) n.textContent = text;
+      parent.append(n);
+      return n;
+    }
+    function svg(tag, attrs, text) {
+      const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+      if (text != null) n.textContent = text;
+      $("plot").append(n);
+      return n;
+    }
+    for (const key of new Set(data.points.map(workload))) {
+      const o = element("option", JSON.parse(key).join(" / "), $("workload"));
+      o.value = key;
+    }
+    $("source").textContent = [
+      ...new Set(data.points.map((p) => `${p.model} · ${p.source}`)),
+    ].join(" / ");
+    $("metadata").textContent = JSON.stringify(data.metadata, null, 2);
+    $("target").value = data.target;
+    $("util").value = data.utilization;
+    $("tokens").value = data.token_type;
+    $("slider").max = Math.ceil(
+      Math.max(data.target, ...data.points.map((p) => speed(p) || 0)),
+    );
+    $("slider").value = data.target;
+    function render() {
+      const target = Number($("target").value),
+        util = Number($("util").value),
+        type = $("tokens").value;
+      if (!(target > 0 && Number.isFinite(target) && util > 0 && util <= 1)) {
+        $("error").textContent =
+          "请输入正数交互速度，以及大于 0、不超过 1 的有效负载比例。";
+        $("rows").replaceChildren();
+        $("plot").replaceChildren();
+        $("count").textContent = "参数无效";
+        return;
+      }
+      $("error").textContent = "";
+      const points = data.points.filter((p) => workload(p) === $("workload").value),
+        field = type + "_tps_per_gpu";
+      const groups = new Map();
+      for (const p of points) {
+        const k = keys(p);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(p);
+      }
+      $("rows").replaceChildren();
+      let eligibleCount = 0;
+      for (const group of groups.values()) {
+        const eligible = group
+          .filter(
+            (p) =>
+              speed(p) >= target &&
+              speed(p) != null &&
+              (p.failed == null || p.failed === 0) &&
+              p[field] > 0,
+          )
+          .sort((a, b) => b[field] - a[field]);
+        const best = eligible[0],
+          p = best || group[0],
+          tr = element("tr", null, $("rows"));
+        tr.dataset.hardware = p.hardware;
+        tr.dataset.throughput = best ? best[field] : "";
+        const title = element(
+          "td",
+          `${p.hardware} / ${p.framework} / ${p.precision}`,
+          tr,
+        );
+        element(
+          "small",
+          `${p.date} · ${p.disagg ? "PD" : "共置"} · ${p.spec_method} · ${p.offload_mode}`,
+          element("div", null, title),
+        );
+        title.title = JSON.stringify(
+          Object.fromEntries(scope.map((k) => [k, p[k]])),
+          null,
+          2,
+        );
+        const id = element("td", null, tr);
+        if (best) {
+          eligibleCount++;
+          const link = String(best.run_url || "");
+          if (/^https:\/\/github\.com\//.test(link)) {
+            const a = element("a", best.id, id);
+            a.href = link;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          } else id.textContent = best.id;
+          element("div", `并发 ${best.concurrency}`, id);
+        } else id.textContent = "—";
+        element("td", best ? fmt(speed(best)) : "—", tr);
+        element("td", best ? fmt(best[field]) : "—", tr);
+        const cell = element("td", null, tr),
+          input = element("input", null, cell);
+        input.type = "number";
+        input.min = "0.001";
+        input.step = "0.1";
+        input.value = prices[p.hardware] ?? "";
+        input.setAttribute("aria-label", p.hardware + " 每 GPU 小时成本");
+        input.addEventListener("input", () => {
+          const v = Number(input.value);
+          if (input.value !== "" && Number.isFinite(v) && v > 0)
+            prices[p.hardware] = v;
+          else delete prices[p.hardware];
+          for (const row of $("rows").rows) {
+            if (row.dataset.hardware !== p.hardware) continue;
+            const other = row.cells[4].querySelector("input");
+            if (other !== input) other.value = prices[p.hardware] ?? "";
+            const q = Number(row.dataset.throughput),
+              rate = prices[p.hardware];
+            row.cells[5].textContent =
+              q > 0 && rate > 0 ? fmt((rate * 1e6) / (3600 * q * util)) : "—";
+          }
+        });
+        const rate = prices[p.hardware];
+        element(
+          "td",
+          best && rate > 0 ? fmt((rate * 1e6) / (3600 * best[field] * util)) : "—",
+          tr,
+        );
+        element("td", best ? "合格观测点" : "无合格观测点", tr);
+      }
+      $("count").textContent =
+        `满足目标的观测点 · ${eligibleCount} / ${groups.size} 个系列`;
+      $("plot").replaceChildren();
+      const valid = points.filter((p) => speed(p) > 0 && p[field] >= 0),
+        maxX = Math.max(target, ...valid.map(speed)) * 1.1,
+        maxY = Math.max(1, ...valid.map((p) => p[field])) * 1.1;
+      const x = (v) => 80 + (v / maxX) * 1000,
+        y = (v) => 340 - (v / maxY) * 295;
+      for (let i = 0; i <= 5; i++) {
+        const xx = (maxX * i) / 5,
+          yy = (maxY * i) / 5;
+        svg("line", { x1: 80, x2: 1080, y1: y(yy), y2: y(yy), stroke: "#e3e9ef" });
+        svg(
+          "text",
+          {
+            x: 68,
+            y: y(yy) + 4,
+            "text-anchor": "end",
+            fill: "#687a8b",
+            "font-size": 12,
+          },
+          fmt(yy),
+        );
+        svg(
+          "text",
+          {
+            x: x(xx),
+            y: 365,
+            "text-anchor": "middle",
+            fill: "#687a8b",
+            "font-size": 12,
+          },
+          fmt(xx),
+        );
+      }
+      svg(
+        "text",
+        {
+          x: 580,
+          y: 395,
+          "text-anchor": "middle",
+          fill: "#526477",
+          "font-size": 13,
+        },
+        "交互速度：1 / P90 ITL（输出 tok/s）",
+      );
+      svg(
+        "text",
+        { x: 80, y: 23, fill: "#526477", "font-size": 13 },
+        "吞吐 tok/s/GPU",
+      );
+      svg("line", {
+        x1: x(target),
+        x2: x(target),
+        y1: 40,
+        y2: 340,
+        stroke: "#bd6b19",
+        "stroke-dasharray": "5 5",
+      });
+      for (const p of valid) {
+        const circle = svg("circle", {
+          cx: x(speed(p)),
+          cy: y(p[field]),
+          r: 5,
+          fill: color(p),
+          opacity: speed(p) >= target ? 0.85 : 0.25,
+        });
+        const title = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "title",
+        );
+        title.textContent = `${p.hardware} / ${p.framework} / ${p.precision}\n${p.date} · ${p.id} · concurrency ${p.concurrency}\n${fmt(speed(p))} output tok/s; ${fmt(p[field])} tok/s/GPU\n${p.run_url || p.source}`;
+        circle.append(title);
+      }
+    }
+    $("slider").addEventListener("input", () => {
+      $("target").value = $("slider").value;
+      render();
+    });
+    for (const id of ["target", "util", "tokens", "workload"])
+      $(id).addEventListener("input", () => {
+        $("slider").max = Math.max(
+          Number($("slider").max),
+          Number($("target").value) || 1,
+        );
+        $("slider").value = $("target").value;
+        render();
+      });
+    render();
+  </script>
+</html>
