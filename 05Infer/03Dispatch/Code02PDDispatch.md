@@ -2,6 +2,8 @@
 
 # 大模型推理 PD 分离
 
+> 本文使用逻辑设备和张量克隆进行教学模拟，耗时不能代表真实跨 GPU 或跨节点 PD 分离的性能。真实服务的 KV 传输、部署与评测方法见 [PD 分离推理：从原理到 vLLM 部署](./02PDDisaggregation.md)。
+
 PD 分离（Prefill-Decode Separation）是大模型推理优化中的重要技术，它能有效解决计算密集型 Prefill 阶段和内存密集型 Decode 阶段资源竞争的问题。
 
 PD 分离的核心思想是将大模型推理的计算密集型 Prefill 阶段和内存密集型 Decode 阶段分离到不同的硬件资源上。下面我们用一个简化的 Transformer 模型来模拟 PD 分离，并进行性能对比。
