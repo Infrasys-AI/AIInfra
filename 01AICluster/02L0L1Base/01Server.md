@@ -89,10 +89,12 @@
 
 - **核心硬件配置**：
   - CPU：2 颗 AMD EPYC 900 极 4/9005 系列处理器，负责任务调度、数据预处理与 GPU 协同管理
-  - GPU：8 张 NVIDIA HGX H100，基于 Hopper 架构，支持 FP8 精度计算，单卡 FP8 算力达 200 PFlops，8 张总算力 1.6 PFlops
-  - GPU 互联：通过 NVIDIA NVLink 与 NVSwitch 实现 GPU 间高速通信，总带宽 900 GB/s
+  - GPU：HGX H100 8-GPU 平台包含 8 颗 NVIDIA H100 SXM GPU，基于 Hopper 架构；单 GPU FP8 Tensor Core 稠密峰值为 1979 TFLOPS（1.979 PFLOPS），8 颗 GPU 的理论合计为 15.832 PFLOPS
+  - GPU 互联：通过 NVIDIA NVLink 与 NVSwitch 实现 GPU 间高速通信，每颗 H100 GPU 的 NVLink 双向带宽为 900 GB/s
   - 内存与存储：12 通道 DDR5 RDIMM（最大 1.5 TB），8×2.5 英寸 Gen5 NVMe 热插拔硬盘（单盘速率 7.4 GB/s）
   - 电源：5+1 冗余 3000W 电源（80 PLUS Titanium 认证），总功率 15000W，满足高功耗需求
+
+算力口径：按 [NVIDIA H100 官方规格](https://www.nvidia.com/en-us/data-center/h100/)，H100 SXM 的 FP8 Tensor Core 稀疏峰值为 3958 TFLOPS；按 [Hopper 架构说明](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/)中结构化稀疏的两倍吞吐口径折算，稠密峰值为 1979 TFLOPS。8 颗 GPU 的稀疏峰值合计为 31.664 PFLOPS。上述数值是理论峰值，实际训练或推理吞吐还取决于算子、精度、通信和资源利用率，不能直接等同于业务性能。
 
 #### 物理结构
 
@@ -104,7 +106,7 @@ NV GPU 型 AI 服务器的物理结构以"最大化 GPU 性能"为核心，各�
 | 8    | PCIe Switch 板   | 作为 CPU 与 GPU 的数据桥梁，采用 PEX89104 型号（支持 PCIe 5.0），将 CPU 的 PCIe 通道分配给 8 张 GPU |
 | 9    | 散热器 & CPU     | CPU 散热器采用热管+大面积鳍片设计，应对高功耗；CPU 负责调度 GPU 任务 |
 | 10   | 内存             | DDR5 RDIMM 支持 ECC 校验，避免训练中断；通过 Infinity Fabric 总线与 CPU 连接 |
-| 14   | NVIDIA HGX H100  | 算力核心，单卡集成 4 个 GPU 芯片，8 张 HGX H100 通过 NVLink 组成 GPU 集群 |
+| 14   | NVIDIA HGX H100  | GPU 基板平台，集成 8 颗 H100 Tensor Core GPU 和 4 颗第三代 NVSwitch，通过 NVLink 互联（[NVIDIA 架构说明](https://developer.nvidia.com/blog/introducing-nvidia-hgx-h100-an-accelerated-server-platform-for-ai-and-high-performance-computing/)） |
 | 15   | DPU              | 数据处理单元，卸载 CPU 的网络任务，支持 RDMA，降低分布式训练延迟 |
 | 18   | NIC 模组         | 支持 2×10Gb/s 或 2×25Gb/s 速率，用于连接存储集群与前端应用 |
 | 22   | 风扇模组         | GPU 专属散热风扇，采用下吹式风道，确保 GPU 温度低于 85℃ |
